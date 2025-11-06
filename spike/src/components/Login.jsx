@@ -7,33 +7,45 @@ function Login({ setUsername }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  // Base URL from environment variable
+  const API_BASE = import.meta.env.VITE_API_URL;
+
+  // Check if user exists
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     try {
-      const res = await axios.post('/api/check-user', { username: inputUsername });
+      const res = await axios.post(`${API_BASE}/check-user`, { username: inputUsername });
       if (res.data.exists) {
+        // User exists, proceed to chat
         setUsername(inputUsername);
       } else {
+        // User not found, show password input for registration
         setShowPassword(true);
       }
     } catch (err) {
       console.error(err);
-      setError('Error checking user');
+      setError('Error checking user. Please try again.');
     }
   };
 
+  // Register new user
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
     try {
-      const res = await axios.post('/api/register', { username: inputUsername, password });
+      const res = await axios.post(`${API_BASE}/register`, {
+        username: inputUsername,
+        password,
+      });
       if (res.data.success) {
         setUsername(inputUsername);
+      } else if (res.data.error) {
+        setError(res.data.error);
       }
     } catch (err) {
       console.error(err);
-      setError('Error registering');
+      setError('Error registering user. Please try again.');
     }
   };
 
