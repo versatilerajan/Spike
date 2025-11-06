@@ -13,34 +13,43 @@ function Chat({ username }) {
   const [searchResults, setSearchResults] = useState([]);
   const messagesEndRef = useRef(null);
 
+  const API_BASE = import.meta.env.VITE_API_URL; // ✅ Use Render backend URL
+  const SOCKET_URL = API_BASE;
+  
+  // Initialize socket
   useEffect(() => {
-    const backendHost = import.meta.env.VITE_BACKEND_HOST || 'localhost';
-    const backendUrl = `http://${backendHost}:3000`;
-    
-    const newSocket = io(backendUrl, { transports: ['websocket'] });
+    if (!username) return;
+
+    const newSocket = io(SOCKET_URL, { transports: ['websocket'] });
+
     newSocket.on('connect', () => {
       newSocket.emit('join', username);
     });
+
     newSocket.on('user list', (userList) => {
       setOnlineUsers(userList.filter((u) => u !== username));
     });
+
     newSocket.on('private message', ({ from, message }) => {
       if (currentChat === from) {
-        setMessages((prev) => ([...prev, { from, message }]));
+        setMessages((prev) => [...prev, { from, message }]);
       }
     });
+
     newSocket.on('error', (msg) => {
       alert(msg);
     });
+
     setSocket(newSocket);
 
     return () => newSocket.disconnect();
   }, [username, currentChat]);
 
+  // Fetch past users
   useEffect(() => {
     const fetchPastUsers = async () => {
       try {
-        const res = await axios.get('/api/past-users', { params: { username } });
+        const res = await axios.get(`${API_BASE}/past-users`, { params: { username } });
         setPastUsers(res.data);
       } catch (err) {
         console.error('Error fetching past users:', err);
@@ -49,52 +58,64 @@ function Chat({ username }) {
     fetchPastUsers();
   }, [username]);
 
+  // Fetch messages for current chat
   useEffect(() => {
-    if (currentChat) {
-      const fetchMessages = async () => {
-        try {
-          const res = await axios.get('/api/messages', { params: { username, otherUser: currentChat } });
-          setMessages(res.data);
-        } catch (err) {
-          console.error('Error fetching messages:', err);
-        }
-      };
-      fetchMessages();
-    }
+    if (!currentChat) return;
+
+    const fetchMessages = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/messages`, {
+          params: { username, otherUser: currentChat },
+        });
+        setMessages(res.data);
+      } catch (err) {
+        console.error('Error fetching messages:', err);
+      }
+    };
+    fetchMessages();
   }, [currentChat, username]);
 
+  // Scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Send message
   const sendMessage = () => {
-    if (currentChat && inputMessage.trim()) {
-      socket.emit('private message', { to: currentChat, message: inputMessage });
-      setMessages((prev) => [...prev, { from: username, message: inputMessage }]);
-      setInputMessage('');
-    }
+    if (!currentChat || !inputMessage.trim()) return;
+
+    socket.emit('private message', { to: currentChat, message: inputMessage });
+    setMessages((prev) => [...prev, { from: username, message: inputMessage }]);
+    setInputMessage('');
   };
 
+  // Search users
   const handleSearch = async (e) => {
-    setSearchQuery(e.target.value);
-    if (e.target.value) {
-      try {
-        const res = await axios.get('/api/search-users', { params: { query: e.target.value, username } });
-        setSearchResults(res.data);
-      } catch (err) {
-        console.error('Error searching users:', err);
-      }
-    } else {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (!query) {
       setSearchResults([]);
+      return;
+    }
+
+    try {
+      const res = await axios.get(`${API_BASE}/search-users`, {
+        params: { query, username },
+      });
+      setSearchResults(res.data);
+    } catch (err) {
+      console.error('Error searching users:', err);
     }
   };
 
-  const selectSearchResult = (selectedUser) => {
-    setCurrentChat(selectedUser);
+  // Select user from search
+  const selectSearchResult = (user) => {
+    setCurrentChat(user);
     setSearchQuery('');
     setSearchResults([]);
-    if (!pastUsers.includes(selectedUser)) {
-      setPastUsers([...pastUsers, selectedUser]);
+    if (!pastUsers.includes(user)) {
+      setPastUsers([...pastUsers, user]);
     }
   };
 
@@ -116,6 +137,7 @@ function Chat({ username }) {
             ))}
           </ul>
         )}
+
         <h2>Online Users</h2>
         <ul>
           {onlineUsers.map((user) => (
@@ -128,6 +150,7 @@ function Chat({ username }) {
             </li>
           ))}
         </ul>
+
         <h2>Past Chats</h2>
         <ul>
           {pastUsers.map((user) => (
@@ -141,24 +164,30 @@ function Chat({ username }) {
           ))}
         </ul>
       </div>
+
       <div className="chat-window">
         {currentChat ? (
           <>
             <h2>Chatting with {currentChat}</h2>
             <div className="messages">
               {messages.map((msg, idx) => (
-                <div key={idx} className={`message ${msg.from === username ? 'sent' : 'received'}`}>
+                <div
+                  key={idx}
+                  className={`message ${msg.from === username ? 'sent' : 'received'}`}
+                >
                   <strong>{msg.from}:</strong> {msg.message}
                 </div>
               ))}
               <div ref={messagesEndRef} />
             </div>
+
             <div className="input-area">
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 placeholder="Type your message..."
+                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               />
               <button onClick={sendMessage}>Send</button>
             </div>
